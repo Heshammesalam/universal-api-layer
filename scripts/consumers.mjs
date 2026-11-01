@@ -1,5 +1,10 @@
 import { verifyAngularConsumers } from "./angular-consumer.mjs";
-import { copyFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -31,7 +36,15 @@ if (
 const minimum = process.env.UAL_COMPATIBILITY === "minimum";
 const reactVersion = minimum ? "18.0.0" : "^19.0.0";
 const vueVersion = minimum ? "3.3.0" : "^3.5.0";
-const queryVersion = minimum ? "5.0.0" : "^5.0.0";
+const locked = JSON.parse(
+  readFileSync(join(root, "package-lock.json"), "utf8"),
+);
+const reactQueryVersion = minimum
+  ? "5.0.0"
+  : locked.packages["node_modules/@tanstack/react-query"].version;
+const vueQueryVersion = minimum
+  ? "5.0.0"
+  : locked.packages["node_modules/@tanstack/vue-query"].version;
 run([npm, "run", "build"]);
 const pack = JSON.parse(
   run([
@@ -52,12 +65,12 @@ for (const framework of ["core", "react", "vue"])
       Object.assign(deps, {
         react: reactVersion,
         "react-dom": reactVersion,
-        "@tanstack/react-query": queryVersion,
+        "@tanstack/react-query": reactQueryVersion,
       });
     if (framework === "vue")
       Object.assign(deps, {
         vue: vueVersion,
-        "@tanstack/vue-query": queryVersion,
+        "@tanstack/vue-query": vueQueryVersion,
       });
     writeFileSync(
       join(cwd, "package.json"),
