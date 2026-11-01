@@ -1,3 +1,4 @@
+import { readStream } from "./stream";
 import { ApiError } from "./errors";
 import { createSessionState } from "./session";
 import { abortable, invokeCallback } from "./callbacks";
@@ -5,6 +6,8 @@ import { laravelErrors } from "./helpers";
 import { validateResponse } from "./validation";
 import type { ApiSession } from "./session";
 import type {
+  StreamOptions,
+  ServerSentEvent,
   Params,
   ApiHeaders,
   ApiResponse,
@@ -267,6 +270,134 @@ export function createApiClient(config: ClientOptions = {}) {
     url: string,
     request: RequestOptions<T> = {},
   ): Promise<T | null | ApiResponse<T>> {
+    for await (const context of transport(url, request)) {
+      const { response, signal, assert } = context;
+      try {
+        const data = await readData(response, signal);
+        const schema =
+          request.schema === false
+            ? undefined
+            : (request.schema ?? options.schema);
+        const validated = schema
+          ? await abortable(
+              () => validateResponse(schema, data, response.status),
+              signal,
+            )
+          : data;
+        assert();
+        if (request.responseMode === "full")
+          return Object.freeze({
+            data: validated as T | null,
+            headers: new Headers(response.headers),
+            status: response.status,
+            statusText: response.statusText,
+            url: response.url,
+          });
+        return validated as T | null;
+      } catch (cause) {
+        throw requestError(cause, signal);
+      }
+    }
+    throw new ApiError("Missing response", 0, {}, undefined, "network");
+  }
+  function requestError(cause: unknown, signal: AbortSignal) {
+    if (signal.aborted) return signal.reason;
+    if (cause instanceof ApiError) return cause;
+    return new ApiError(
+      "Network request failed",
+      0,
+      {},
+      undefined,
+      "network",
+      cause,
+    );
+  }
+  async function readData(response: Response, signal: AbortSignal) {
+    const raw = await abortable(() => response.text(), signal);
+    let data: unknown = raw === "" ? null : raw;
+    if (
+      raw &&
+      response.headers.get("content-type")?.toLowerCase().includes("json")
+    ) {
+      try {
+        data = JSON.parse(raw);
+      } catch (cause) {
+        if (response.ok)
+          throw new ApiError(
+            "Invalid JSON response",
+            response.status,
+            {},
+            undefined,
+            "parse",
+            cause,
+          );
+      }
+    }
+    return data;
+  }
+  function stream(
+    url: string,
+    request: StreamOptions & { format: "sse" },
+  ): AsyncGenerator<ServerSentEvent, void, unknown>;
+  function stream(
+    url: string,
+    request?: StreamOptions & { format?: "text" },
+  ): AsyncGenerator<string, void, unknown>;
+  function stream(
+    url: string,
+    request: StreamOptions,
+  ): AsyncGenerator<string | ServerSentEvent, void, unknown>;
+  async function* stream(
+    url: string,
+    request: StreamOptions = {},
+  ): AsyncGenerator<string | ServerSentEvent, void, unknown> {
+    if (
+      request.format !== undefined &&
+      request.format !== "text" &&
+      request.format !== "sse"
+    )
+      throw new ApiError(
+        "Stream format must be text or sse",
+        0,
+        {},
+        undefined,
+        "configuration",
+      );
+    const maxEventSize = request.maxEventSize ?? 1_048_576;
+    if (!Number.isSafeInteger(maxEventSize) || maxEventSize <= 0)
+      throw new ApiError(
+        "maxEventSize must be a positive safe integer",
+        0,
+        {},
+        undefined,
+        "configuration",
+      );
+    const headers = new Headers(request.headers);
+    if (request.format === "sse" && !headers.has("Accept"))
+      headers.set("Accept", "text/event-stream");
+    for await (const { response, signal, assert } of transport(
+      url,
+      { ...request, headers },
+      true,
+    )) {
+      try {
+        yield* readStream(
+          response,
+          signal,
+          assert,
+          request.format ?? "text",
+          maxEventSize,
+        );
+      } catch (cause) {
+        throw requestError(cause, signal);
+      }
+    }
+  }
+  async function* transport(
+    url: string,
+    request: RequestOptions = {},
+    streaming = false,
+  ) {
     if (
       request.responseMode !== undefined &&
       request.responseMode !== "data" &&
@@ -399,7 +530,7 @@ export function createApiClient(config: ClientOptions = {}) {
               credentials: options.credentials,
               redirect: "error",
               cache:
-                managedAuth || headers.has("Authorization")
+                streaming || managedAuth || headers.has("Authorization")
                   ? "no-store"
                   : "default",
             }),
@@ -435,27 +566,8 @@ export function createApiClient(config: ClientOptions = {}) {
           throw error;
         }
       }
-      const raw = await abortable(() => response.text(), controller.signal);
-      let data: unknown = raw === "" ? null : raw;
-      if (
-        raw &&
-        response.headers.get("content-type")?.toLowerCase().includes("json")
-      ) {
-        try {
-          data = JSON.parse(raw);
-        } catch (cause) {
-          if (response.ok)
-            throw new ApiError(
-              "Invalid JSON response",
-              response.status,
-              {},
-              undefined,
-              "parse",
-              cause,
-            );
-        }
-      }
-      if (!response.ok)
+      if (!response.ok) {
+        const data = await readData(response, controller.signal);
         throw new ApiError(
           typeof data === "object" && data && "message" in data
             ? String(data.message)
@@ -466,26 +578,15 @@ export function createApiClient(config: ClientOptions = {}) {
           ),
           data,
         );
-      const schema =
-        request.schema === false
-          ? undefined
-          : (request.schema ?? options.schema);
-      const validated = schema
-        ? await abortable(
-            () => validateResponse(schema, data, response.status),
-            controller.signal,
-          )
-        : data;
-      session.assert(revision);
-      if (request.responseMode === "full")
-        return Object.freeze({
-          data: validated as T | null,
-          headers: new Headers(response.headers),
-          status: response.status,
-          statusText: response.statusText,
-          url: response.url,
-        });
-      return validated as T | null;
+      }
+      yield {
+        response,
+        signal: controller.signal,
+        assert: () => {
+          controller.signal.throwIfAborted();
+          session.assert(revision);
+        },
+      };
     } catch (cause) {
       if (controller.signal.aborted) throw controller.signal.reason;
       if (cause instanceof ApiError) throw cause;
@@ -498,6 +599,9 @@ export function createApiClient(config: ClientOptions = {}) {
         cause,
       );
     } finally {
+      controller.abort(
+        new ApiError("Request closed", 0, {}, undefined, "cancelled"),
+      );
       clearTimeout(timer);
       session.requests.delete(controller);
       request.signal?.removeEventListener("abort", abort);
@@ -536,6 +640,7 @@ export function createApiClient(config: ClientOptions = {}) {
       );
     },
     request,
+    stream,
   });
 }
 export type ApiClient = ReturnType<typeof createApiClient>;

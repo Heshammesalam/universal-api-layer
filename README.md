@@ -69,6 +69,60 @@ For a cross-origin API, the backend must expose custom response headers, for exa
 
 When using full responses inside a native useQuery, return a JSON-friendly projection such as `{ posts: response.data, total: Number(totalHeader) }` from queryFn. Do not persist a native Headers instance as cache data; JSON serialization does not preserve its methods.
 
+### Streaming chat: text and SSE
+
+`client.stream(url, options)` returns a lazy, single-use async generator. The request starts on the first iteration; chunks/events arrive before the response finishes. It uses the same URL allowlist, credentials, managed session, JSON request body, cancellation and pre-response 401 refresh as `request`. Streaming requests use HTTP cache: no-store. They do not use the TanStack query cache or automatic query/mutation retries.
+
+```ts
+const controller = new AbortController();
+let answer = "";
+for await (const chunk of client.stream("/chat", {
+  method: "POST",
+  body: { message: "Hello" },
+  signal: controller.signal,
+  timeoutMs: 120_000,
+})) {
+  answer += chunk; // decoded UTF-8 text; update your Vue ref/React state here
+}
+// A Stop button can call controller.abort().
+```
+
+The default `format: "text"` yields strings. Network chunk boundaries are arbitrary, so one chunk is not necessarily a token, line or JSON object. The decoder preserves UTF-8 characters split across reads.
+
+For SSE, use `format: "sse"`. A successful body must have `Content-Type: text/event-stream` (parameters are allowed). HTTP 204/205 ends without messages. Each emitted `ServerSentEvent` has string `event` (default `message`), `data` and `id`, plus an optional numeric `retry` hint. The parser handles LF/CR/CRLF, comments/heartbeats, UTF-8 BOM, multiline data and persistent IDs. Only blank-line-terminated events with a data field are dispatched; incomplete events at EOF are discarded. The latest valid retry hint is exposed, but never schedules a reconnect. This is a Fetch-based SSE consumer, not the browser EventSource reconnection API. Parsing follows the [HTML SSE event-stream rules](https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation).
+
+```ts
+// Example backend contract: data contains { delta: string }, then [DONE].
+for await (const event of client.stream("/chat", {
+  method: "POST",
+  body: { message: "Hello" },
+  format: "sse",
+  signal: controller.signal,
+  timeoutMs: 120_000,
+})) {
+  if (event.data === "[DONE]") break;
+  if (event.event === "error") throw new Error("Chat server error");
+  const payload: unknown = JSON.parse(event.data);
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("delta" in payload) ||
+    typeof payload.delta !== "string"
+  ) {
+    throw new Error("Invalid chat event");
+  }
+  answer += payload.delta;
+}
+```
+
+`[DONE]`, JSON shapes and application error events are backend-specific; they are not interpreted automatically. Streaming bypasses client whole-response schemas. Parse and validate each complete SSE `data` payload yourself (or with your schema library). NDJSON and WebSocket protocols are not parsed by this API.
+
+The total deadline remains **15 seconds by default**, including body consumption. Increase `timeoutMs` for chat; `timeoutMs: 0` disables it explicitly. This is a total deadline, not an inactivity timeout. `break`, generator `return()`, thrown consumer errors and `AbortController.abort()` close the reader and transport. Always consume with `for await`/`finally` or abort when leaving a view. Managed logout/account switches abort active streams and prevent buffered old-session events being yielded. Clear already displayed conversation state when your application changes accounts; streamed UI state is not part of the library query cache.
+
+There is **no reconnect or replay after a successful response starts**, including after partial data, parse errors or connection loss. HTTP 401 may refresh/replay once before any successful stream body is read; disable `authRetry` if your endpoint cannot safely accept this, and implement server-side idempotency where needed. `maxEventSize` defaults to 1,048,576 UTF-16 code units and bounds each SSE line and accumulated event data; exceeding it throws `ApiError` with code `parse`. Text streams are consumed incrementally without assembling the full response.
+
+Ready-to-use examples with Send/Stop, cleanup and safe text rendering: [Vue StreamingChat.vue](./examples/vue/src/StreamingChat.vue) and [React StreamingChat.tsx](./examples/react/src/StreamingChat.tsx). Render the component in its example application's main view and provide `/api/chat` on your backend. The backend must flush chunks/events; configure proxies to avoid buffering and configure CORS for cross-origin requests. Existing `/posts` demo endpoints do not provide a chat stream.
+
 ### Managed login/logout and automatic cache isolation
 
 After a successful login, pass the server-confirmed identity once:

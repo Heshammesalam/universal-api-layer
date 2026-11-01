@@ -32,6 +32,22 @@ export interface RequestOptions<T = unknown> {
   signal?: AbortSignal;
   timeoutMs?: number;
 }
+export interface StreamOptions extends Omit<
+  RequestOptions,
+  "responseMode" | "schema"
+> {
+  /** text yields decoded UTF-8 chunks; sse yields complete SSE events. */
+  format?: "text" | "sse";
+  /** Maximum buffered SSE line/event length in UTF-16 code units. Default 1 MiB. */
+  maxEventSize?: number;
+}
+export interface ServerSentEvent {
+  readonly event: string;
+  readonly data: string;
+  readonly id: string;
+  /** Server retry hint only; this client never reconnects automatically. */
+  readonly retry?: number;
+}
 export interface ClientOptions {
   baseUrl?: string;
   session?: ApiSession | null;

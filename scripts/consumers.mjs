@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -133,6 +133,14 @@ for (const framework of ["core", "react", "vue"])
       ],
       cwd,
     );
+    run(
+      [
+        "--input-type=module",
+        "-e",
+        `import {createApiClient} from 'universal-api-layer';const c=createApiClient({fetch:async()=>new Response('data: first\\n\\ndata: second\\n\\n',{headers:{'content-type':'text/event-stream'}})});const result=[];for await(const e of c.stream('/',{format:'sse'}))result.push(e.data);if(result.join(',')!=='first,second')throw Error('packed streaming failed');`,
+      ],
+      cwd,
+    );
     if (framework === "core" && language === "typescript") {
       writeFileSync(
         join(cwd, "consumer.ts"),
@@ -145,6 +153,8 @@ const parsed=await client.request('/',{schema:(data:unknown)=>({id:String(data)}
 const selected:{id:string}|null=parsed;void selected;
 // @ts-expect-error Session snapshots must not expose tokens.
 client.getSessionSnapshot().token;
+const textStream:AsyncGenerator<string,void,unknown>=client.stream('/');void textStream;
+const events=client.stream('/',{format:'sse'});for await(const event of events){const data:string=event.data;void data;break;}
 client.setSession({userId:'b',token:'b'});client.logout();`,
       );
       writeFileSync(
@@ -196,6 +206,12 @@ client.setSession({userId:'b',token:'b'});client.logout();`,
           : `export default {esbuild:{jsx:'automatic'}};`,
       );
       if (ts) {
+        const chat =
+          framework === "vue" ? "StreamingChat.vue" : "StreamingChat.tsx";
+        copyFileSync(
+          join(root, "examples", framework, "src", chat),
+          join(cwd, "src", chat),
+        );
         writeFileSync(
           join(cwd, "tsconfig.json"),
           JSON.stringify({

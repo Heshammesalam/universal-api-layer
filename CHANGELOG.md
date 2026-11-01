@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 - 2026-11-01
+
+- Added lazy client.stream async generators for incremental UTF-8 text and complete SSE events, with typed output and bounded SSE buffers.
+- Shared origin/auth/request transport, deadlines through body consumption, reader cancellation on abort/break, and session guards for already buffered events.
+- HTTP 401 can refresh once before a successful stream starts; no automatic reconnect or replay after partial output.
+- Vue/React streaming chat examples, real HTTP incremental delivery test, parser/cancellation/session regressions and packed consumer smoke/type checks.
+
 ## 0.4.0 - 2026-10-31
 
 - Optional responseMode: full on client.request exposes parsed/validated data, response headers, status, statusText and URL, with precise overloads and unchanged data-only defaults.

@@ -1,8 +1,8 @@
 {
   "name": "universal-api-layer",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
-  "description": "Framework-independent HTTP client with React and Vue adapters, managed auth sessions, coordinated token refresh, response schemas and isolated query caches.",
+  "description": "Framework-independent HTTP and streaming SSE client with React/Vue adapters, managed auth sessions, token refresh, response schemas and isolated query caches.",
   "license": "MIT",
   "files": [
     "dist",
@@ -117,7 +117,11 @@
     "cache-invalidation",
     "token-refresh",
     "response-validation",
-    "session-management"
+    "session-management",
+    "streaming",
+    "sse",
+    "server-sent-events",
+    "chat"
   ],
   "packageManager": "npm@11.21.1",
   "overrides": {
