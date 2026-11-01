@@ -2,7 +2,7 @@
 
 [Source, tests and maintenance history](https://github.com/Heshammesalam/universal-api-layer) | [Issues](https://github.com/Heshammesalam/universal-api-layer/issues) | [CI](https://github.com/Heshammesalam/universal-api-layer/actions/workflows/ci.yml)
 
-A framework-independent Fetch HTTP client with separate React, Vue and Angular adapters powered by TanStack Query v5. Use the same transport from JavaScript or TypeScript. The core imports neither framework, each adapter imports only its own framework, and published declarations preserve that separation.
+A framework-independent Fetch HTTP client with optional React/Vue adapters powered by TanStack Query v5 and an Angular DI/RxJS adapter. Use the same transport from JavaScript or TypeScript. The core imports neither framework, each adapter imports only its own framework, and published declarations preserve that separation.
 
 ## Requirements and installation
 
