@@ -37,3 +37,5 @@ Adds opt-in `responseMode: "full"` metadata and explicit `invalidateScope: "all"
 Public source: https://github.com/Heshammesalam/universal-api-layer . The initial import starts the public maintenance history; it does not reconstruct earlier development commits. Check Actions for hosted CI results.
 
 `reports/dependency-audit.json` records the package version, lockfile digest, timestamp and separate repository/full and production-selected dependency scans. Zero known advisories is not a comprehensive security audit. Publication of 0.4.0 and registry consumer verification remain pending until explicitly recorded.
+
+Hosted CI for commit 1eed56f passed all three jobs: Linux Node 22.13/minimum dependencies, Linux Node 24/current dependencies, and Windows Node 24/current dependencies. Each job passed the 125 tests, six packed consumers, lint/types, dependency audit and formatting. Evidence: https://github.com/Heshammesalam/universal-api-layer/actions/runs/41285639857 . The first Windows run exposed checkout line-ending differences; `.gitattributes` now normalizes text to LF.
