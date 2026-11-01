@@ -12,7 +12,7 @@
     "SECURITY.md"
   ],
   "bin": {
-    "universal-api-layer": "./dist/cli/index.js"
+    "universal-api-layer": "dist/cli/index.js"
   },
   "exports": {
     ".": {
