@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import { verifyBrowserConsumer } from "./browser-consumer.mjs";
 const root = process.cwd();
 const npm = process.env.npm_execpath;
@@ -141,6 +142,14 @@ for (const framework of ["core", "react", "vue"])
       ],
       cwd,
     );
+    run(
+      [
+        "--input-type=module",
+        "-e",
+        `import {verifyPackedSocket} from ${JSON.stringify(pathToFileURL(join(root, "scripts/socket-consumer.mjs")).href)};await verifyPackedSocket(import.meta.resolve('universal-api-layer/websocket'),import.meta.resolve('universal-api-layer'));`,
+      ],
+      cwd,
+    );
     if (framework === "core" && language === "typescript") {
       writeFileSync(
         join(cwd, "consumer.ts"),
@@ -153,6 +162,9 @@ const parsed=await client.request('/',{schema:(data:unknown)=>({id:String(data)}
 const selected:{id:string}|null=parsed;void selected;
 // @ts-expect-error Session snapshots must not expose tokens.
 client.getSessionSnapshot().token;
+const {createSocketClient}=await import('universal-api-layer/websocket');
+const socket=createSocketClient({url:'wss://socket.test',schema:(value:unknown)=>String(value)});
+socket.onMessage(value=>{const typed:string=value;void typed;});socket.dispose();
 const textStream:AsyncGenerator<string,void,unknown>=client.stream('/');void textStream;
 const events=client.stream('/',{format:'sse'});for await(const event of events){const data:string=event.data;void data;break;}
 client.setSession({userId:'b',token:'b'});client.logout();`,
@@ -211,6 +223,12 @@ client.setSession({userId:'b',token:'b'});client.logout();`,
         copyFileSync(
           join(root, "examples", framework, "src", chat),
           join(cwd, "src", chat),
+        );
+        const socketChat =
+          framework === "vue" ? "WebSocketChat.vue" : "WebSocketChat.tsx";
+        copyFileSync(
+          join(root, "examples", framework, "src", socketChat),
+          join(cwd, "src", socketChat),
         );
         writeFileSync(
           join(cwd, "tsconfig.json"),

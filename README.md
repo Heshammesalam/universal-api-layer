@@ -123,6 +123,88 @@ There is **no reconnect or replay after a successful response starts**, includin
 
 Ready-to-use examples with Send/Stop, cleanup and safe text rendering: [Vue StreamingChat.vue](./examples/vue/src/StreamingChat.vue) and [React StreamingChat.tsx](./examples/react/src/StreamingChat.tsx). Render the component in its example application's main view and provide `/api/chat` on your backend. The backend must flush chunks/events; configure proxies to avoid buffering and configure CORS for cross-origin requests. Existing `/posts` demo endpoints do not provide a chat stream.
 
+### WebSocket: a separate optional transport
+
+```ts
+import { createSocketClient } from "universal-api-layer/websocket";
+const socket = createSocketClient({
+  url: "wss://chat.example.com/socket",
+  protocols: ["chat.v1"], // optional; must be supported by your server
+  schema(value: unknown) {
+    if (
+      !value ||
+      typeof value !== "object" ||
+      !("text" in value) ||
+      typeof value.text !== "string"
+    ) {
+      throw new Error("Invalid chat message");
+    }
+    return { text: value.text };
+  },
+});
+const off = socket.onMessage((message) => console.log(message.text));
+const offState = socket.subscribe(() =>
+  console.log(socket.getSnapshot().status),
+);
+socket.connect(); // lazy: construction does not open a connection
+// Send from your UI only when getSnapshot().status === "open":
+// socket.sendJson({ type: "chat.send", text: "Hello" });
+// Later: off(); offState(); socket.dispose();
+```
+
+This is raw WebSocket, not Socket.IO, Laravel Echo or a channel/room protocol. The backend must implement the agreed URL, subprotocol and message shapes. The core WebSocket import has no framework or third-party WebSocket runtime dependency. It uses native WebSocket in supported browsers and Node 22.13+, or an explicit trusted `webSocketFactory` implementing `SocketTransport`.
+
+`connect()` starts connection setup and returns void; observe `subscribe`/`getSnapshot()` or `onError` for asynchronous results. `disconnect(code?, reason?)` stops connecting/reconnecting and allows a later explicit `connect()`. `dispose()` additionally clears subscriptions and permanently disables the client. `getSnapshot()` is stable until state changes, frozen and contains `status`, `reconnectAttempt`, `error` and server `close` information. Status is idle/connecting/open/reconnecting/closed/disposed. Subscriptions return unsubscribe functions and state callbacks run on every snapshot change, not just on open transitions. Callback exceptions are isolated and reported to error listeners without recursively invoking failing error listeners.
+
+Incoming text is parsed as JSON by default. Optional `schema` validates/transforms each decoded message, including asynchronous Standard Schema/parse validators; processing preserves arrival order. Invalid JSON/schema messages are dropped and reported via `onError` and snapshot.error, while the connection remains active. `format: "raw"` preserves string/ArrayBuffer/Blob data instead. `send(data)` sends native text/binary data; `sendJson(value)` serializes once. Type arguments do not validate data by themselves.
+
+**There is no outgoing queue or automatic message replay.** Sending while not OPEN throws `ApiError` with code `network`; exceeding the outgoing buffer limit throws code `backpressure`. Successful send means the platform accepted the data for transmission, not that the server received or committed it. Application acknowledgements, unique message IDs, deduplication and explicit retry decisions belong to your backend/application protocol.
+
+Reconnect defaults to at most **5 attempts per explicit connect()**, using exponential delay from 500 ms up to 30 seconds, with jitter between 50% and 100% of that delay. The retry budget does not reset on short-lived successful opens; reaching it closes the client until you explicitly connect again. Reconnect applies to close codes 1001/1005/1006/1011/1012/1013/1014 and transient setup/handshake timeout failures. Normal 1000, protocol/policy failures and application codes (including authentication failures) stop. `reconnect: false` disables retries. Configure `{ maxAttempts, baseDelayMs, maxDelayMs, jitter }` to override the bounded policy. Reconnect recreates the transport but does not resend messages or rejoin backend-specific rooms automatically.
+
+`connectTimeoutMs` defaults to 10,000 and includes ticket lookup/handshake. It is cleared after open; there is no automatic idle timeout or application heartbeat. Implement a heartbeat contract with your server if required. `maxMessageSize` and `maxBufferedAmount` default to 1,048,576 bytes; `maxPendingMessages` defaults to 64 messages awaiting async processing. Oversized incoming messages/backlog overflow report `backpressure` and close without automatic reconnect. Native WebSocket has no receive-stream backpressure API; these limits bound this client's message processing, not every platform/network buffer. Size/buffer limits are positive safe integers, and connection/reconnect timers must be between 1 and 2,147,483,647 ms. maxAttempts also permits zero.
+
+#### WebSocket authentication and sessions
+
+Browser WebSocket constructors do not accept arbitrary Authorization headers ([native constructor API](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/WebSocket)). The SDK does not put access tokens in URLs/subprotocols or copy HTTP credentials into a socket. Use server-authenticated cookies or a server-issued short-lived, scoped connection ticket. For tickets, use an abortable URL provider and pin its exact allowed ws(s) origins:
+
+```ts
+const socket = createSocketClient({
+  sessionClient: client, // same managed HTTP client used for login/logout
+  allowedOrigins: ["wss://chat.example.com"],
+  url: async (signal) => {
+    const ticket = await client.request<{ url: string }>("/socket-ticket", {
+      method: "POST",
+      requiresAuth: true,
+      signal,
+      schema(value: unknown) {
+        if (
+          !value ||
+          typeof value !== "object" ||
+          !("url" in value) ||
+          typeof value.url !== "string"
+        ) {
+          throw new Error("Invalid connection ticket");
+        }
+        return { url: value.url };
+      },
+    });
+    if (!ticket) throw new Error("Missing connection ticket");
+    return ticket.url;
+  },
+});
+```
+
+A URL provider is called on every connection attempt and must declare allowedOrigins. URLs must be absolute ws:// or wss:// without embedded credentials or fragments; use wss:// in production. A static URL defaults to its own origin, or must match an explicit allowlist. The allowlist protects connection targets; server-side authentication and Origin validation remain necessary. Short-lived ticket URLs are credentials too: avoid logging them or using long-lived access tokens there. The client does not add connection URLs to snapshots; providers and custom errors must also avoid sensitive diagnostics.
+
+When sessionClient is supplied, requiresAuth defaults to true. Set it explicitly false only for an intentionally public connection. Logout/account/tenant changes close the socket, cancel pending tickets/backoff, and prevent old messages/async validations from being delivered. Session binding also clears retained error/close diagnostics after server-initiated closure; it remains subscribed until disconnect/dispose or a session transition. Always release a finished client. Login does not reopen it automatically; explicitly connect after authenticating. Same-identity HTTP token rotation does not reauthenticate an already-open socket: disconnect/connect explicitly if your backend requires fresh credentials. Browser handshake errors do not expose an HTTP 401 for automatic socket refresh; the HTTP ticket request can use the HTTP client's coordinated refresh normally. Clear already displayed chat state on account changes; socket messages are not owned by the TanStack cache.
+
+#### React and Vue socket subscriptions
+
+Optional adapters are available from `universal-api-layer/websocket/react` and `universal-api-layer/websocket/vue`. Both export `useSocketState(socket)` and `useSocketMessage(socket, listener)`. React state uses useSyncExternalStore; Vue state is a readonly ref and composables require an active effect scope. Both clean subscriptions on unmount/scope disposal. They do **not** connect or close a shared client automatically: the component/application owns connect/disconnect/dispose. Create request-local clients during SSR and open them only in browser lifecycle callbacks.
+
+Complete examples: [React WebSocketChat.tsx](./examples/react/src/WebSocketChat.tsx) and [Vue WebSocketChat.vue](./examples/vue/src/WebSocketChat.vue). They expect a development raw WebSocket server at ws://localhost:3000/chat that accepts `{ type: "chat.send", text: string }` and sends `{ text: string }`. They bound displayed history, clear it on session changes, and clean the connection when leaving the view. The React example uses disconnect on cleanup to support Strict Mode effect replay; use dispose when an imperative owner is permanently finished with a client. The existing JSONPlaceholder posts endpoint is not a WebSocket server.
+
 ### Managed login/logout and automatic cache isolation
 
 After a successful login, pass the server-confirmed identity once:

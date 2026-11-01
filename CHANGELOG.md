@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 - 2026-11-01
+
+- Optional raw WebSocket transport with native runtime/injectable factory, typed message validation, state/message/error subscriptions and explicit connect/disconnect/dispose.
+- Bounded reconnect backoff/jitter and handshake deadlines, incoming message/backlog and outgoing buffered-byte limits. No outgoing queue or automatic message replay.
+- Managed HTTP session binding cancels sockets/tickets/retries on logout/account changes and guards queued async message validations. Abortable, origin-pinned connection-ticket providers; no implicit bearer forwarding or opaque-handshake token refresh.
+- Separate React/Vue state/message subscription adapters, component examples and core/adapter/native-server/packed-consumer coverage. ws is a development-only test server, not a runtime dependency.
+
 ## 0.5.0 - 2026-11-01
 
 - Added lazy client.stream async generators for incremental UTF-8 text and complete SSE events, with typed output and bounded SSE buffers.

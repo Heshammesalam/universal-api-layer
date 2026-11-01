@@ -1,5 +1,6 @@
 export type FieldErrors = Record<string, string[]>;
 export type ApiErrorCode =
+  | "backpressure"
   | "http"
   | "network"
   | "timeout"
