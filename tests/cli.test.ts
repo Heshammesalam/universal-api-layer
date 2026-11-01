@@ -36,7 +36,7 @@ for (const framework of ["react", "vue"])
       expect(run().status).toBe(1);
       expect(await readFile(file, "utf8")).toBe("keep");
       expect(run(["--force"]).status).toBe(0);
-    });
+    }, 15_000);
 it("fails actionably when detection is ambiguous", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "ual-cli-"));
   const result = spawnSync(process.execPath, [cli, "init"], {

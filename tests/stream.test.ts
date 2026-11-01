@@ -215,6 +215,22 @@ it("keeps the total request deadline active after the first chunk", async () => 
   await check;
   expect(s.cancel).toHaveBeenCalledTimes(1);
 });
+it("clears deadlines promptly when aborting a consumer paused at a yield", async () => {
+  vi.useFakeTimers();
+  const s = source();
+  const controller = new AbortController();
+  const iterator = createApiClient({ fetch: async () => s.response }).stream(
+    "/",
+    { signal: controller.signal },
+  );
+  s.push("first");
+  await iterator.next();
+  expect(vi.getTimerCount()).toBe(1);
+  controller.abort();
+  expect(s.cancel).toHaveBeenCalledTimes(1);
+  expect(vi.getTimerCount()).toBe(0);
+  await iterator.return();
+});
 it("supports disabling the total deadline for a long-lived stream", async () => {
   vi.useFakeTimers();
   const s = source();

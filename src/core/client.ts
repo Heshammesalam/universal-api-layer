@@ -467,6 +467,15 @@ export function createApiClient(config: ClientOptions = {}) {
           timeout,
         )
       : undefined;
+    const cleanup = () => {
+      clearTimeout(timer);
+      session.requests.delete(controller);
+      request.signal?.removeEventListener("abort", abort);
+      controller.signal.removeEventListener("abort", cleanup);
+    };
+    // A consumer may be paused at a yield when it aborts and never resume it.
+    // Release session/timer registrations promptly, not only on generator return.
+    controller.signal.addEventListener("abort", cleanup, { once: true });
     try {
       controller.signal.throwIfAborted();
       const headers = new Headers(defaultHeaders);
@@ -602,9 +611,7 @@ export function createApiClient(config: ClientOptions = {}) {
       controller.abort(
         new ApiError("Request closed", 0, {}, undefined, "cancelled"),
       );
-      clearTimeout(timer);
-      session.requests.delete(controller);
-      request.signal?.removeEventListener("abort", abort);
+      cleanup();
     }
   }
   return Object.freeze({
