@@ -1,6 +1,12 @@
-import { getCurrentScope, onScopeDispose, readonly, shallowRef } from "vue";
+import {
+  getCurrentScope,
+  onScopeDispose,
+  shallowReadonly,
+  shallowRef,
+} from "vue";
+import type { Ref } from "vue";
 import { ApiError } from "../core/errors";
-import type { SocketClient } from "./types";
+import type { SocketClient, SocketSnapshot } from "./types";
 
 function assertScope() {
   if (!getCurrentScope())
@@ -13,7 +19,9 @@ function assertScope() {
     );
 }
 /** Subscribes only; the application owns connect/disconnect and may share a client. */
-export function useSocketState<T>(client: SocketClient<T>) {
+export function useSocketState<T>(
+  client: SocketClient<T>,
+): Readonly<Ref<SocketSnapshot>> {
   assertScope();
   const state = shallowRef(client.getSnapshot());
   onScopeDispose(
@@ -21,7 +29,7 @@ export function useSocketState<T>(client: SocketClient<T>) {
       state.value = client.getSnapshot();
     }),
   );
-  return readonly(state);
+  return shallowReadonly(state);
 }
 export function useSocketMessage<T>(
   client: SocketClient<T>,
