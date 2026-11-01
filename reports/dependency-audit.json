@@ -1,10 +1,10 @@
 {
   "package": "universal-api-layer",
-  "version": "0.6.0",
-  "generatedAtUtc": "2026-11-01T09:25:13.773Z",
+  "version": "0.7.0",
+  "generatedAtUtc": "2026-11-01T10:00:13.833Z",
   "node": "v24.12.0",
   "npm": "11.21.1",
-  "lockfileSha256": "5e672191356ab636983d3c1b97ed058e0c7ff61380b34de892aa6b946e5eafda",
+  "lockfileSha256": "89ecd89d378ce75351242bd0d10ff67b70c1e6b0cc500aeb8dfea7ea2cc27260",
   "limitation": "Known-advisory dependency inventory only. This is not a comprehensive security audit, penetration test or proof of application/transport security. Other consumers and peer selections have independent dependency graphs.",
   "checks": [
     {
@@ -22,11 +22,11 @@
         },
         "dependencies": {
           "prod": 1,
-          "dev": 333,
+          "dev": 337,
           "optional": 79,
           "peer": 12,
           "peerOptional": 0,
-          "total": 333
+          "total": 337
         }
       },
       "advisories": []
@@ -46,11 +46,11 @@
         },
         "dependencies": {
           "prod": 1,
-          "dev": 333,
+          "dev": 337,
           "optional": 79,
           "peer": 12,
           "peerOptional": 0,
-          "total": 333
+          "total": 337
         }
       },
       "advisories": []

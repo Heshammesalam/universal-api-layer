@@ -123,9 +123,41 @@ it("validates explicit flags before requesting missing choices", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "ual-cli-"));
   const result = spawnSync(
     process.execPath,
-    [cli, "init", "--framework", "angular"],
+    [cli, "init", "--framework", "svelte"],
     { cwd, encoding: "utf8" },
   );
   expect(result.status).toBe(1);
   expect(result.stderr).toContain("--framework react|vue");
+});
+
+it("detects Angular and generates TypeScript standalone providers without overwriting", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "ual-angular-cli-"));
+  await writeFile(
+    join(cwd, "package.json"),
+    JSON.stringify({ dependencies: { "@angular/core": "^22.0.0" } }),
+  );
+  const run = (args: string[] = []) =>
+    spawnSync(process.execPath, [cli, "init", ...args], {
+      cwd,
+      encoding: "utf8",
+    });
+  expect(run().status).toBe(0);
+  expect(await readFile(join(cwd, "src/api.providers.ts"), "utf8")).toContain(
+    "provideApiClient",
+  );
+  expect(await readFile(join(cwd, "src/ApiExample.ts"), "utf8")).toContain(
+    "standalone:true",
+  );
+  expect(run().status).toBe(1);
+  expect(run(["--force"]).status).toBe(0);
+}, 15000);
+it("rejects Angular JavaScript scaffolding actionably", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "ual-angular-cli-"));
+  const result = spawnSync(
+    process.execPath,
+    [cli, "init", "--framework", "angular", "--language", "javascript"],
+    { cwd, encoding: "utf8" },
+  );
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("TypeScript");
 });

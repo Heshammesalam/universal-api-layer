@@ -2,7 +2,7 @@
 
 [Source, tests and maintenance history](https://github.com/Heshammesalam/universal-api-layer) | [Issues](https://github.com/Heshammesalam/universal-api-layer/issues) | [CI](https://github.com/Heshammesalam/universal-api-layer/actions/workflows/ci.yml)
 
-A framework-independent Fetch HTTP client with separate React and Vue adapters powered by TanStack Query v5. Use the same transport from JavaScript or TypeScript. The core imports neither framework, each adapter imports only its own framework, and published declarations preserve that separation.
+A framework-independent Fetch HTTP client with separate React, Vue and Angular adapters powered by TanStack Query v5. Use the same transport from JavaScript or TypeScript. The core imports neither framework, each adapter imports only its own framework, and published declarations preserve that separation.
 
 ## Requirements and installation
 
@@ -26,6 +26,71 @@ npm install --save-dev typescript @types/react@^19 @types/react-dom@^19
 ```
 
 Frameworks and query adapters are optional peers, external to the bundles. Install only the peers for your chosen adapter. ESM imports are supported; CommonJS require is outside this release's scope.
+
+## Angular 20.3, 21 and 22
+
+Angular uses an optional DI/RxJS adapter without React, Vue or their TanStack packages. In an existing Angular application:
+
+```sh
+npm install universal-api-layer rxjs@^7.8.2
+npx universal-api-layer init --framework angular
+```
+
+Angular scaffolding is TypeScript-only. It creates `src/api.providers.ts` and `src/ApiExample.ts`, detects @angular/core, refuses overwrites and leaves existing bootstrap files intact. Add the provider to application configuration and import the standalone example into a view.
+
+```ts
+// app.config.ts
+import { ApplicationConfig } from "@angular/core";
+import { createApiClient } from "universal-api-layer";
+import { provideApiClient } from "universal-api-layer/angular";
+export const appConfig: ApplicationConfig = {
+  providers: [provideApiClient(() => createApiClient({ baseUrl: "/api" }))],
+};
+```
+
+The factory runs in Angular's injection context once per providing injector. Prefer factories for SSR/request-local clients; do not share an authenticated client across server requests. An existing client instance is also accepted. injectApiClient() returns the core client. injectApiSession() returns a readonly, token-free session Signal with DestroyRef cleanup.
+
+```ts
+import { Component, DestroyRef, inject, signal } from "@angular/core";
+import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
+import { ApiService } from "universal-api-layer/angular";
+@Component({
+  selector: "users-panel",
+  standalone: true,
+  template: `<button (click)="load()">Load</button>
+    <pre>{{ result() }}</pre>`,
+})
+export class UsersPanel {
+  private readonly api = inject(ApiService);
+  private readonly destroy = inject(DestroyRef);
+  readonly result = signal("");
+  load() {
+    this.api
+      .request$("/users", { responseMode: "full" })
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe({
+        next: (response) =>
+          this.result.set(
+            JSON.stringify({
+              users: response.data,
+              total: response.headers.get("X-Total-Count"),
+            }),
+          ),
+        error: (error) => this.result.set(error.message),
+      });
+  }
+}
+```
+
+ApiService exposes typed request$ and stream$ with the core's request/full-response and text/SSE overloads. They are **cold**: each subscription starts an independent operation. Unsubscribe aborts only that subscription. Destroying the providing injector cancels its ApiService operations and prevents future subscriptions; it does not log out shared clients or close sockets/direct core calls owned elsewhere. Directly constructed new ApiService(client) instances must be disposed by their owner. External AbortSignal, session guards, refresh, deadlines, schemas and ApiError semantics remain active. Multiple mutation subscriptions mean multiple server operations.
+
+The adapter uses Fetch: Angular HttpClient interceptors, its testing backend and HttpClient transfer cache do not apply. Configure session/headers/refresh on createApiClient. It does not add an Angular query cache, retries, deduplication or automatic invalidateKeys handling. Refetch explicitly after writes or integrate an application-owned cache. React/Vue TanStack behavior is unchanged.
+
+For SSE, api.stream$("/chat", { method: "POST", body: { message: "Hello" }, format: "sse", timeoutMs: 120_000 }) emits complete ServerSentEvent values. Use takeUntilDestroyed or unsubscribe from a Stop action. Parse/validate each event's data according to your backend contract. RxJS cancellation closes the reader; no automatic replay is added.
+
+Angular WebSocket helpers come from universal-api-layer/websocket/angular: injectSocketState(socket) returns a readonly Signal, and injectSocketMessage(socket, listener) registers a lifecycle-cleaned subscriber. Call these helpers in an injection context. They subscribe only; the owner connects/disconnects/disposes. Open browser-only sockets in afterNextRender and register socket.dispose with DestroyRef. Existing origin/session/reconnect limits apply. Clear displayed user data on account changes.
+
+Complete standalone examples in [examples/angular](./examples/angular) cover HTTP with explicit refetch, cancellable SSE and WebSocket chat. The example is zoneless; the adapter uses standard Signals/Observables. Packed Angular CLI production builds, strict templates and DOM HTTP/mutation behavior are tested. Use the matching Node/TypeScript toolchain ([Angular compatibility](https://angular.dev/reference/versions)): Angular 22 requires Node ^22.22.3 / ^24.15.0 / >=26 and TypeScript 6.0. Other SDK entrypoints retain the package's minimum runtime. Angular/RxJS remain optional peers and are not bundled into the other entrypoints.
 
 ## HTTP client
 

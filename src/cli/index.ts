@@ -6,6 +6,22 @@ export function templates(
   framework: string,
   language: string,
 ): Record<string, string> {
+  if (framework === "angular") {
+    if (language !== "typescript")
+      throw new Error("Angular scaffolding requires TypeScript.");
+    return {
+      "src/api.providers.ts": `import {createApiClient} from 'universal-api-layer';
+import {provideApiClient} from 'universal-api-layer/angular';
+export const apiProviders=provideApiClient(()=>createApiClient({baseUrl:'/api'}));
+`,
+      "src/ApiExample.ts": `import {Component,DestroyRef,inject,signal} from '@angular/core';
+import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
+import {ApiService} from 'universal-api-layer/angular';
+@Component({selector:'api-example',standalone:true,template:'<button (click)="load()">Load users</button><pre>{{ data() }}</pre><p role="alert">{{ error() }}</p>'})
+export class ApiExample {private api=inject(ApiService);private destroy=inject(DestroyRef);readonly data=signal('');readonly error=signal('');load(){this.api.request$('/users').pipe(takeUntilDestroyed(this.destroy)).subscribe({next:value=>this.data.set(JSON.stringify(value)),error:cause=>this.error.set(cause instanceof Error?cause.message:'Request failed')});}}
+`,
+    };
+  }
   const ts = language === "typescript";
   const ext = ts ? "ts" : "js";
   const setup = `import { createApiClient } from 'universal-api-layer';\nexport const client = createApiClient({ baseUrl: '/api' });\n`;
@@ -26,13 +42,13 @@ async function main() {
   const args = process.argv.slice(2);
   if (args.includes("--help")) {
     console.log(
-      "universal-api-layer init [--framework react|vue] [--language javascript|typescript] [--force]",
+      "universal-api-layer init [--framework react|vue|angular] [--language javascript|typescript] [--force]",
     );
     return;
   }
   if (args.shift() !== "init")
     throw new Error(
-      "Use: universal-api-layer init --framework react|vue --language javascript|typescript",
+      "Use: universal-api-layer init --framework react|vue|angular --language javascript|typescript",
     );
   const flags: Record<string, string> = {};
   let force = false;
@@ -50,8 +66,8 @@ async function main() {
       throw new Error(`Invalid option ${arg}. Use --help.`);
     flags[arg.slice(2)] = args.shift()!;
   }
-  if (flags.framework && !["react", "vue"].includes(flags.framework))
-    throw new Error("Expected --framework react|vue.");
+  if (flags.framework && !["react", "vue", "angular"].includes(flags.framework))
+    throw new Error("Expected --framework react|vue|angular.");
   if (flags.language && !["javascript", "typescript"].includes(flags.language))
     throw new Error("Expected --language javascript|typescript.");
   let pkg: {
@@ -64,7 +80,9 @@ async function main() {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-  const frameworks = ["react", "vue"].filter((name) => deps[name]);
+  const frameworks = ["react", "vue", "angular"].filter(
+    (name) => deps[name === "angular" ? "@angular/core" : name],
+  );
   const exists = async (name: string) =>
     access(name).then(
       () => true,
@@ -81,6 +99,7 @@ async function main() {
         ? "typescript"
         : "javascript"
       : undefined);
+  if (framework === "angular") language = flags.language ?? "typescript";
   // Conflicting configs require an explicit choice; otherwise inspect sources.
   if (!language && !(hasTsConfig && hasJsConfig)) {
     const { readdir } = await import("node:fs/promises");
@@ -141,14 +160,19 @@ async function main() {
       input.close();
     }
   }
-  framework ??= await choose("framework", ["react", "vue"]);
+  framework ??= await choose("framework", ["react", "vue", "angular"]);
+  if (framework === "angular") {
+    if (flags.language === "javascript")
+      throw new Error("Angular scaffolding requires TypeScript.");
+    language = "typescript";
+  }
   language ??= await choose("language", ["javascript", "typescript"]);
   if (
-    !["react", "vue"].includes(framework) ||
+    !["react", "vue", "angular"].includes(framework) ||
     !["javascript", "typescript"].includes(language)
   )
     throw new Error(
-      "Expected --framework react|vue and --language javascript|typescript.",
+      "Expected --framework react|vue|angular and --language javascript|typescript.",
     );
   const files = templates(framework, language);
   if (!force)
@@ -160,6 +184,15 @@ async function main() {
   for (const [name, content] of Object.entries(files)) {
     await mkdir(resolve(name, ".."), { recursive: true });
     await writeFile(name, content, { flag: force ? "w" : "wx" });
+  }
+  if (framework === "angular") {
+    console.log(
+      "Created Angular API providers and standalone example. Add apiProviders from './api.providers' to your application configuration providers, then import ApiExample into a standalone component.",
+    );
+    console.log(
+      "Install: npm install universal-api-layer @angular/core rxjs@^7.8.2\nUse Angular 20.3-22 and its matching Angular/Node/TypeScript toolchain. No existing bootstrap files were changed.",
+    );
+    return;
   }
   console.log(
     `Created API setup and example.\nInstall: npm install universal-api-layer ${framework === "react" ? "react@^19 react-dom@^19 @tanstack/react-query@^5" : "vue@^3.5 @tanstack/vue-query@^5"}`,

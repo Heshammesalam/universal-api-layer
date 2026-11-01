@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 - 2026-11-01
+
+- Optional Angular 20.3-22 DI providers, injectApiClient and readonly session signals.
+- Cold cancellable ApiService request$/stream$ observables with metadata/SSE typing, per-subscription abort, provider teardown and session guards. No implicit Angular query cache or HttpClient interceptor integration.
+- Angular WebSocket state/message signal helpers with lifecycle cleanup and explicit connection ownership.
+- TypeScript CLI scaffolding, standalone HTTP/SSE/WebSocket examples, injector/RxJS regressions and packed Angular production AOT/strict-template/browser consumers.
+
 ## 0.6.0 - 2026-11-01
 
 - Optional raw WebSocket transport with native runtime/injectable factory, typed message validation, state/message/error subscriptions and explicit connect/disconnect/dispose.

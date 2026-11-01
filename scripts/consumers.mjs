@@ -1,3 +1,4 @@
+import { verifyAngularConsumers } from "./angular-consumer.mjs";
 import { copyFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -97,10 +98,18 @@ for (const framework of ["core", "react", "vue"])
           "vue",
           "@tanstack/react-query",
           "@tanstack/vue-query",
+          "@angular/core",
+          "rxjs",
         ]
       : framework === "react"
-        ? ["vue", "@tanstack/vue-query"]
-        : ["react", "react-dom", "@tanstack/react-query"]) {
+        ? ["vue", "@tanstack/vue-query", "@angular/core", "rxjs"]
+        : [
+            "react",
+            "react-dom",
+            "@tanstack/react-query",
+            "@angular/core",
+            "rxjs",
+          ]) {
       let found = false;
       try {
         req.resolve(missing);
@@ -255,3 +264,5 @@ client.setSession({userId:'b',token:'b'});client.logout();`,
     }
     console.log(`PASS ${framework} ${language} (${cwd})`);
   }
+
+await verifyAngularConsumers(tar, root, npm, minimum);

@@ -8,6 +8,8 @@ export default defineConfig({
     "src/websocket/index.ts",
     "src/websocket/react.ts",
     "src/websocket/vue.ts",
+    "src/angular/index.ts",
+    "src/websocket/angular.ts",
   ],
   format: ["esm"],
   dts: true,
@@ -20,6 +22,8 @@ export default defineConfig({
     "vue",
     "@tanstack/react-query",
     "@tanstack/vue-query",
+    "@angular/core",
+    "rxjs",
   ],
   target: "es2022",
 });
